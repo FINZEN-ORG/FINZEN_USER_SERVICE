@@ -5,6 +5,8 @@ import eci.ieti.FinzenUserService.repository.UserRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 import java.util.Optional;
 
 @RestController
@@ -19,8 +21,21 @@ public class UserController {
 
     @GetMapping("/me")
     public ResponseEntity<?> getCurrentUser(Authentication authentication) {
-        String userId = authentication.getName();
-        Optional<User> user = userRepository.findById(Long.valueOf(userId));
-        return user.map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
+        try {
+            Long userId = Long.valueOf(authentication.getName());
+
+            Optional<User> user = userRepository.findById(userId);
+
+            return user.map(u -> ResponseEntity.ok(
+                    Map.of(
+                            "id", u.getId(),
+                            "name", u.getName(),
+                            "email", u.getEmail()
+                    )
+            )).orElseGet(() -> ResponseEntity.notFound().build());
+
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid userId in JWT"));
+        }
     }
 }
