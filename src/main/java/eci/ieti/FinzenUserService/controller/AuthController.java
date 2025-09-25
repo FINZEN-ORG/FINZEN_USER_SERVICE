@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 import java.util.Optional;
+import java.io.IOException;
+import java.security.GeneralSecurityException;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -32,28 +34,35 @@ public class AuthController {
 
     @PostMapping("/google")
     public ResponseEntity<?> authenticateWithGoogle(@RequestBody GoogleTokenDto googleTokenDto) {
-        Optional<GoogleIdToken.Payload> payloadOptional = googleTokenVerifier.verify(googleTokenDto.getIdToken());
+        try {
+            Optional<GoogleIdToken.Payload> payloadOptional = Optional.ofNullable(googleTokenVerifier.verify(googleTokenDto.getIdToken()));
 
-        if (payloadOptional.isPresent()) {
-            GoogleIdToken.Payload payload = payloadOptional.get();
+            if (payloadOptional.isPresent()) {
+                GoogleIdToken.Payload payload = payloadOptional.get();
 
-            // Extraemos los datos del usuario
-            String googleId = payload.getSubject();
-            String email = payload.getEmail();
-            String name = (String) payload.get("name");
+                // Extraemos los datos del usuario
+                String googleId = payload.getSubject();
+                String email = payload.getEmail();
+                String name = (String) payload.get("name");
 
-            // Buscamos o creamos el usuario en nuestra base de datos
-            User user = userService.findOrCreateUser(googleId, name, email);
+                // Buscamos o creamos el usuario en nuestra base de datos
+                User user = userService.findOrCreateUser(googleId, name, email);
 
-            // Generamos nuestro propio token JWT de FinZen
-            String jwt = jwtTokenProvider.generateToken(user);
+                // Generamos nuestro propio token JWT de FinZen
+                String jwt = jwtTokenProvider.generateToken(user);
 
-            // Devolvemos el token JWT al cliente
-            return ResponseEntity.ok(new JwtResponseDto(jwt));
-        } else {
+                // Devolvemos el token JWT al cliente
+                return ResponseEntity.ok(new JwtResponseDto(jwt));
+            } else {
+                return ResponseEntity
+                        .status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("error", "Invalid Google ID Token"));
+            }
+        } catch (GeneralSecurityException | IOException e) {
+            // Manejar las excepciones
             return ResponseEntity
-                    .status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of("error", "Invalid Google ID Token"));
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to verify Google ID Token", "details", e.getMessage()));
         }
     }
 }
