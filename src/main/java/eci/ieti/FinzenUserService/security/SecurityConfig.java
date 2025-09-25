@@ -12,7 +12,7 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 // Deshabilita CSRF para simplificar en APIs REST
-                .csrf(csrf -> csrf.disable())
+                //.csrf(csrf -> csrf.disable())
                 // Configuración de autorización
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
