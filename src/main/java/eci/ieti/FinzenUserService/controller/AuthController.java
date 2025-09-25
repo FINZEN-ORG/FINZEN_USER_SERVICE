@@ -32,7 +32,6 @@ public class AuthController {
 
     @PostMapping("/google")
     public ResponseEntity<?> authenticateWithGoogle(@RequestBody GoogleTokenDto googleTokenDto) {
-        // Verificamos el token de Google y obtenemos un Optional con el payload
         Optional<GoogleIdToken.Payload> payloadOptional = googleTokenVerifier.verify(googleTokenDto.getIdToken());
 
         if (payloadOptional.isPresent()) {

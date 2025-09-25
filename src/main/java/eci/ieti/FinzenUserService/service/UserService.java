@@ -14,18 +14,13 @@ public class UserService {
         this.userRepository = userRepository;
     }
 
-    /**
-     * Busca un usuario por su email. Si no existe, lo crea.
-     * @param googleId El ID único proporcionado por Google.
-     * @param name El nombre del usuario proporcionado por Google.
-     * @param email El email del usuario proporcionado por Google.
-     * @return El usuario existente o el nuevo usuario creado.
-     */
     public User findOrCreateUser(String googleId, String name, String email) {
-        Optional<User> existingUser = userRepository.findByEmail(email);
-        return existingUser.orElseGet(() -> {
-            User newUser = new User(googleId, name, email);
-            return userRepository.save(newUser);
-        });
+        return userRepository.findByGoogleId(googleId)
+                .or(() -> userRepository.findByEmail(email))
+                .orElseGet(() -> userRepository.save(new User(googleId, name, email)));
+    }
+
+    public Optional<User> findById(Long id) {
+        return userRepository.findById(id);
     }
 }
