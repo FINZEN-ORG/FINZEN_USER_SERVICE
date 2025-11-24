@@ -21,7 +21,6 @@ import java.security.GeneralSecurityException;
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
-
     private final UserService userService;
     private final GoogleTokenVerifier googleTokenVerifier;
     private final JwtTokenProvider jwtTokenProvider;
@@ -36,21 +35,16 @@ public class AuthController {
     public ResponseEntity<?> authenticateWithGoogle(@RequestBody GoogleTokenDto googleTokenDto) {
         try {
             Optional<GoogleIdToken.Payload> payloadOptional = Optional.ofNullable(googleTokenVerifier.verify(googleTokenDto.getIdToken()));
-
             if (payloadOptional.isPresent()) {
                 GoogleIdToken.Payload payload = payloadOptional.get();
-
                 // Extraemos los datos del usuario
                 String googleId = payload.getSubject();
                 String email = payload.getEmail();
                 String name = (String) payload.get("name");
-
                 // Buscamos o creamos el usuario en nuestra base de datos
                 User user = userService.findOrCreateUser(googleId, name, email);
-
                 // Generamos nuestro propio token JWT de FinZen
                 String jwt = jwtTokenProvider.generateToken(user);
-
                 // Devolvemos el token JWT al cliente
                 return ResponseEntity.ok(new JwtResponseDto(jwt));
             } else {
