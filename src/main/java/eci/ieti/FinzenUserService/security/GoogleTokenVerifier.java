@@ -12,7 +12,6 @@ import java.util.Arrays;
 
 @Component
 public class GoogleTokenVerifier {
-
     private final GoogleIdTokenVerifier verifier;
 
     public GoogleTokenVerifier(

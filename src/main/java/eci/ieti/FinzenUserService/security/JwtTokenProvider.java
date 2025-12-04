@@ -12,13 +12,10 @@ import java.util.Date;
 
 @Component
 public class JwtTokenProvider {
-
     @Value("${jwt.secret}")
     private String jwtSecret;
-
     @Value("${jwt.expiration.ms}")
     private int jwtExpirationInMs;
-
     private Key key;
 
     @jakarta.annotation.PostConstruct
