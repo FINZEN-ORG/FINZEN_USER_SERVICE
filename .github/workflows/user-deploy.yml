@@ -10,13 +10,13 @@ jobs:
   build-and-deploy:
     name: Build, Push, and Deploy
     runs-on: ubuntu-latest
-
+    
     env:
       AZURE_RG: finzen-rg
       ACR_SERVER: finzenacr.azurecr.io
       CA_NAME: finzen-api-users
       IMAGE_REPO: api-users
-
+      
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -30,7 +30,7 @@ jobs:
 
       - name: Build and Package with Maven
         run: mvn clean package
-
+      
       - name: 1. Azure Login
         uses: azure/login@v2
         with:
