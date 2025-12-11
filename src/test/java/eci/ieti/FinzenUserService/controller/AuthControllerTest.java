@@ -2,78 +2,183 @@ package eci.ieti.FinzenUserService.controller;
 
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import eci.ieti.FinzenUserService.dto.GoogleTokenDto;
+import eci.ieti.FinzenUserService.dto.JwtResponseDto;
 import eci.ieti.FinzenUserService.model.User;
 import eci.ieti.FinzenUserService.security.GoogleTokenVerifier;
 import eci.ieti.FinzenUserService.security.JwtTokenProvider;
 import eci.ieti.FinzenUserService.service.UserService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import java.io.IOException;
-import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.IOException;
+import java.security.GeneralSecurityException;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
 class AuthControllerTest {
 
-    @Test
-    void authenticateWithGoogle_whenValidToken_returnsJwt() throws Exception {
-        UserService userService = Mockito.mock(UserService.class);
-        GoogleTokenVerifier verifier = Mockito.mock(GoogleTokenVerifier.class);
-        JwtTokenProvider jwtProvider = Mockito.mock(JwtTokenProvider.class);
+    @Mock
+    private UserService userService;
 
-        AuthController controller = new AuthController(userService, verifier, jwtProvider);
+    @Mock
+    private GoogleTokenVerifier googleTokenVerifier;
 
-        // Mock Google payload
-        GoogleIdToken.Payload payload = new GoogleIdToken.Payload();
-        payload.setSubject("google123");
-        payload.setEmail("alice@test.com");
-        payload.set("name", "Alice");
+    @Mock
+    private JwtTokenProvider jwtTokenProvider;
 
-        Mockito.when(verifier.verify("validToken")).thenReturn(payload);
+    @InjectMocks
+    private AuthController authController;
 
-        User user = new User("google123", "Alice", "alice@test.com");
-        user.setId(1L);
+    private GoogleIdToken.Payload mockPayload;
+    private User mockUser;
 
-        Mockito.when(userService.findOrCreateUser("google123", "Alice", "alice@test.com")).thenReturn(user);
-        Mockito.when(jwtProvider.generateToken(user)).thenReturn("mockJwt");
+    @BeforeEach
+    void setUp() {
+        mockPayload = new GoogleIdToken.Payload();
+        mockPayload.setSubject("google123");
+        mockPayload.setEmail("alice@test.com");
+        mockPayload.set("name", "Alice Test");
 
-        GoogleTokenDto dto = new GoogleTokenDto("validToken");
-
-        ResponseEntity<?> response = controller.authenticateWithGoogle(dto);
-
-        assertEquals(200, response.getStatusCode().value());
-        assertTrue(response.getBody().toString().contains("mockJwt"));
+        mockUser = new User("google123", "Alice Test", "alice@test.com");
+        mockUser.setId(1L);
     }
 
     @Test
-    void authenticateWithGoogle_whenInvalidToken_returns401() throws Exception {
-        UserService userService = Mockito.mock(UserService.class);
-        GoogleTokenVerifier verifier = Mockito.mock(GoogleTokenVerifier.class);
-        JwtTokenProvider jwtProvider = Mockito.mock(JwtTokenProvider.class);
+    void authenticateWithGoogle_whenValidToken_returnsJwtSuccessfully() throws Exception {
+        // Arrange
+        String validToken = "validGoogleToken";
+        String expectedJwt = "generatedJwtToken";
+        
+        when(googleTokenVerifier.verify(validToken)).thenReturn(mockPayload);
+        when(userService.findOrCreateUser("google123", "Alice Test", "alice@test.com")).thenReturn(mockUser);
+        when(jwtTokenProvider.generateToken(mockUser)).thenReturn(expectedJwt);
 
-        AuthController controller = new AuthController(userService, verifier, jwtProvider);
+        GoogleTokenDto dto = new GoogleTokenDto(validToken);
 
-        Mockito.when(verifier.verify("invalidToken")).thenReturn(null);
+        // Act
+        ResponseEntity<?> response = authController.authenticateWithGoogle(dto);
 
-        GoogleTokenDto dto = new GoogleTokenDto("invalidToken");
-        ResponseEntity<?> response = controller.authenticateWithGoogle(dto);
+        // Assert
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertTrue(response.getBody() instanceof JwtResponseDto);
+        
+        JwtResponseDto jwtResponse = (JwtResponseDto) response.getBody();
+        assertEquals(expectedJwt, jwtResponse.getAccessToken());
 
-        assertEquals(401, response.getStatusCode().value());
+        verify(googleTokenVerifier, times(1)).verify(validToken);
+        verify(userService, times(1)).findOrCreateUser("google123", "Alice Test", "alice@test.com");
+        verify(jwtTokenProvider, times(1)).generateToken(mockUser);
     }
 
     @Test
-    void authenticateWithGoogle_whenVerifierThrows_returns500() throws Exception {
-        UserService userService = Mockito.mock(UserService.class);
-        GoogleTokenVerifier verifier = Mockito.mock(GoogleTokenVerifier.class);
-        JwtTokenProvider jwtProvider = Mockito.mock(JwtTokenProvider.class);
+    void authenticateWithGoogle_whenTokenIsNull_returns401() throws Exception {
+        // Arrange
+        String invalidToken = "invalidToken";
+        when(googleTokenVerifier.verify(invalidToken)).thenReturn(null);
 
-        AuthController controller = new AuthController(userService, verifier, jwtProvider);
+        GoogleTokenDto dto = new GoogleTokenDto(invalidToken);
 
-        Mockito.when(verifier.verify("boom")).thenThrow(new IOException("network error"));
+        // Act
+        ResponseEntity<?> response = authController.authenticateWithGoogle(dto);
 
-        GoogleTokenDto dto = new GoogleTokenDto("boom");
-        ResponseEntity<?> response = controller.authenticateWithGoogle(dto);
+        // Assert
+        assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertTrue(response.getBody() instanceof Map);
+        
+        @SuppressWarnings("unchecked")
+        Map<String, String> errorBody = (Map<String, String>) response.getBody();
+        assertEquals("Invalid Google ID Token", errorBody.get("error"));
 
-        assertEquals(500, response.getStatusCode().value());
-        assertTrue(response.getBody().toString().contains("Failed to verify"));
+        verify(googleTokenVerifier, times(1)).verify(invalidToken);
+        verify(userService, never()).findOrCreateUser(any(), any(), any());
+        verify(jwtTokenProvider, never()).generateToken(any());
+    }
+
+    @Test
+    void authenticateWithGoogle_whenGeneralSecurityExceptionThrown_returns500() throws Exception {
+        // Arrange
+        String token = "securityErrorToken";
+        when(googleTokenVerifier.verify(token))
+                .thenThrow(new GeneralSecurityException("Security error"));
+
+        GoogleTokenDto dto = new GoogleTokenDto(token);
+
+        // Act
+        ResponseEntity<?> response = authController.authenticateWithGoogle(dto);
+
+        // Assert
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
+        assertNotNull(response.getBody());
+        
+        @SuppressWarnings("unchecked")
+        Map<String, String> errorBody = (Map<String, String>) response.getBody();
+        assertEquals("Failed to verify Google ID Token", errorBody.get("error"));
+        assertTrue(errorBody.containsKey("details"));
+
+        verify(userService, never()).findOrCreateUser(any(), any(), any());
+        verify(jwtTokenProvider, never()).generateToken(any());
+    }
+
+    @Test
+    void authenticateWithGoogle_whenIOExceptionThrown_returns500() throws Exception {
+        // Arrange
+        String token = "ioErrorToken";
+        when(googleTokenVerifier.verify(token))
+                .thenThrow(new IOException("Network error"));
+
+        GoogleTokenDto dto = new GoogleTokenDto(token);
+
+        // Act
+        ResponseEntity<?> response = authController.authenticateWithGoogle(dto);
+
+        // Assert
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
+        assertNotNull(response.getBody());
+        
+        @SuppressWarnings("unchecked")
+        Map<String, String> errorBody = (Map<String, String>) response.getBody();
+        assertEquals("Failed to verify Google ID Token", errorBody.get("error"));
+        assertEquals("Network error", errorBody.get("details"));
+
+        verify(userService, never()).findOrCreateUser(any(), any(), any());
+        verify(jwtTokenProvider, never()).generateToken(any());
+    }
+
+    @Test
+    void authenticateWithGoogle_whenPayloadHasAllRequiredFields_extractsCorrectly() throws Exception {
+        // Arrange
+        String token = "completeToken";
+        GoogleIdToken.Payload completePayload = new GoogleIdToken.Payload();
+        completePayload.setSubject("googleId789");
+        completePayload.setEmail("complete@test.com");
+        completePayload.set("name", "Complete User");
+
+        User user = new User("googleId789", "Complete User", "complete@test.com");
+        user.setId(2L);
+
+        when(googleTokenVerifier.verify(token)).thenReturn(completePayload);
+        when(userService.findOrCreateUser("googleId789", "Complete User", "complete@test.com")).thenReturn(user);
+        when(jwtTokenProvider.generateToken(user)).thenReturn("jwtToken");
+
+        GoogleTokenDto dto = new GoogleTokenDto(token);
+
+        // Act
+        ResponseEntity<?> response = authController.authenticateWithGoogle(dto);
+
+        // Assert
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        verify(userService, times(1)).findOrCreateUser("googleId789", "Complete User", "complete@test.com");
     }
 }
